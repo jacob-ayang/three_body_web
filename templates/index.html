@@ -12,6 +12,7 @@
             margin: 0; 
             overflow: hidden; 
             background-color: #000;
+            font-family: Arial, sans-serif;
         }
         #info {
             position: absolute;
@@ -19,9 +20,9 @@
             width: 100%;
             text-align: center;
             color: white;
-            font-family: Arial, sans-serif;
             font-size: 16px;
             z-index: 100;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
         }
         #controls {
             position: absolute;
@@ -29,55 +30,118 @@
             left: 50%;
             transform: translateX(-50%);
             z-index: 100;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
         }
         #reset-view, #reset-position {
-            padding: 5px 10px;
-            font-size: 12px;
-            background-color: white;
+            padding: 8px 15px;
+            font-size: 14px;
+            background-color: rgba(255, 255, 255, 0.9);
             color: black;
-            border: 1px solid black;
-            border-radius: 3px;
+            border: none;
+            border-radius: 5px;
             cursor: pointer;
-            margin: 0 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
         }
         #reset-view:hover, #reset-position:hover {
-            background-color: #f0f0f0;
-        }
-        #reset-view:hover {
-            background-color: #45a049;
+            background-color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
         }
         #console {
-            position: absolute;
-            top: 50px;
-            left: 10px;
-            width: 300px;
-            height: calc(100% - 100px);
-            background-color: rgba(0, 0, 0, 0.7);
+            position: fixed;
+            top: auto;
+            bottom: 80px;
+            right: 10px;
+            left: auto;
+            width: min(90vw, 350px);
+            max-height: 60vh;
+            background-color: rgba(0, 0, 0, 0.85);
             color: #00ff00;
             font-family: 'Courier New', monospace;
-            font-size: 12px;
-            padding: 10px;
+            font-size: min(3.5vw, 12px);
+            padding: 15px;
             border: 1px solid #00ff00;
+            border-radius: 5px;
             z-index: 100;
             display: flex;
             flex-direction: column;
+            backdrop-filter: blur(5px);
+            box-shadow: 0 0 10px rgba(0,255,0,0.2);
         }
         #console-header {
             font-weight: bold;
-            margin-bottom: 5px;
+            margin-bottom: 8px;
             text-align: center;
+            font-size: min(4vw, 14px);
+            text-shadow: 0 0 5px rgba(0,255,0,0.5);
         }
         #console-equation {
-            margin-bottom: 10px;
-            padding-bottom: 5px;
+            margin-bottom: 12px;
+            padding: 12px;
             border-bottom: 1px solid #00ff00;
+            font-size: min(3.2vw, 11px);
+            background: rgba(0,255,0,0.1);
+            border-radius: 3px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            min-height: 120px;
+            max-height: 180px;
+            line-height: 1.6;
+        }
+        #console-equation::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        #console-equation::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #console-equation::-webkit-scrollbar-thumb {
+            background-color: #00ff00;
+            border-radius: 3px;
         }
         #console-log {
             flex-grow: 1;
             overflow-y: auto;
+            padding-right: 5px;
+            padding-top: 5px;
+            scrollbar-width: thin;
+            scrollbar-color: #00ff00 transparent;
+        }
+        #console-log::-webkit-scrollbar {
+            width: 5px;
+        }
+        #console-log::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        #console-log::-webkit-scrollbar-thumb {
+            background-color: #00ff00;
+            border-radius: 3px;
         }
         .console-line {
-            margin: 2px 0;
+            margin: 4px 0;
+            line-height: 1.4;
+        }
+        @media (max-width: 768px) {
+            #info {
+                font-size: 14px;
+                top: 5px;
+            }
+            #controls {
+                bottom: 10px;
+            }
+            #reset-view, #reset-position {
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+            #console {
+                bottom: 60px;
+                max-height: 35vh;
+            }
         }
     </style>
 </head>
@@ -128,10 +192,6 @@
             const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
             directionalLight.position.set(5, 3, 5);
             scene.add(directionalLight);
-            
-            // 添加点光源让星球发光
-            const pointLight = new THREE.PointLight(0xffff00, 2, 3000);
-            scene.add(pointLight);
             
             // 获取初始天体数据
             fetch('/api/bodies')
@@ -219,12 +279,29 @@
                 // 添加到场景
                 scene.add(mesh);
                 
+                // 为太阳添加光晕效果
+                if (body.name === '太阳') {
+                    const glowGeometry = new THREE.SphereGeometry(body.size_scale * 1.2, 32, 32);
+                    const glowMaterial = new THREE.MeshBasicMaterial({
+                        color: 0xffff00,
+                        transparent: true,
+                        opacity: 0.3
+                    });
+                    const glowMesh = new THREE.Mesh(glowGeometry, glowMaterial);
+                    glowMesh.position.copy(mesh.position);
+                    scene.add(glowMesh);
+                }
+                
                 // 保存引用
                 bodyMeshes.push(mesh);
                 
                 // 创建尾迹
                 const trailGeometry = new THREE.BufferGeometry();
-                const trailMaterial = new THREE.LineBasicMaterial({ color: color });
+                const trailMaterial = new THREE.LineBasicMaterial({ 
+                    color: color,
+                    transparent: true,
+                    opacity: 0.7
+                });
                 const trail = new THREE.Line(trailGeometry, trailMaterial);
                 scene.add(trail);
                 bodyTrails.push({
@@ -248,7 +325,7 @@
                     trail.positions.push(position);
                     
                     // 限制尾迹长度
-                    if (trail.positions.length > 100) {
+                    if (trail.positions.length > 500) {
                         trail.positions.shift();
                     }
                     
@@ -288,7 +365,7 @@
         // 定时更新天体位置
         setInterval(() => {
             // 演化系统
-            fetch('/api/evolve?dt=21600')  // 每次演化6小时，平衡计算量和更新频率
+            fetch('/api/evolve?dt=864000')  // 每次演化240小时，提高10倍速度
                 .then(response => {
                     if (!response.ok) {
                         throw new Error(`HTTP error! status: ${response.status}`);
@@ -304,7 +381,7 @@
                     console.error('Error fetching evolve data:', error);
                     // 可以在这里添加用户友好的错误提示
                 });
-        }, 200);  // 每200毫秒更新一次，提高HTTP回报率
+        }, 100);  // 每100毫秒更新一次，保持更新频率
         
         // 更新天体位置
         function updateBodies() {
@@ -324,7 +401,9 @@
             if (index < text.length) {
                 logElement.textContent += text.charAt(index);
                 // 滚动到底部
-                logElement.parentElement.scrollTop = logElement.parentElement.scrollHeight;
+                if (logElement.parentElement) {
+                    logElement.parentElement.scrollTop = logElement.parentElement.scrollHeight;
+                }
                 setTimeout(() => streamLogText(logElement, text, index + 1), 2.5); // 控制流速，提高四倍
             }
         }
@@ -365,7 +444,9 @@
             }
             
             // 滚动到底部
-            consoleLog.scrollTop = consoleLog.scrollHeight;
+            if (consoleLog) {
+                consoleLog.scrollTop = consoleLog.scrollHeight;
+            }
         }
         
         // 初始化应用
