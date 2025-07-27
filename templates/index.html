@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>三体运动模拟</title>
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #000;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            z-index: 100;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+        }
+        #reset-view, #reset-position {
+            padding: 5px 10px;
+            font-size: 12px;
+            background-color: white;
+            color: black;
+            border: 1px solid black;
+            border-radius: 3px;
+            cursor: pointer;
+            margin: 0 5px;
+        }
+        #reset-view:hover, #reset-position:hover {
+            background-color: #f0f0f0;
+        }
+        #reset-view:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">三体运动模拟</div>
+    <div id="controls">
+        <button id="reset-view">恢复初始视角</button>
+        <button id="reset-position">恢复初始位置</button>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
+    <script>
+        // 场景、相机、渲染器
+        let scene, camera, renderer, controls;
+        let bodies = [];
+        let bodyMeshes = [];
+        let bodyTrails = [];
+        
+        // 初始化场景
+        function init() {
+            // 创建场景
+            scene = new THREE.Scene();
+            
+            // 创建相机
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100000);
+            camera.position.set(0, 0, 3000);
+            
+            // 创建渲染器
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+            
+            // 添加相机控制
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            
+            // 添加光源
+            const ambientLight = new THREE.AmbientLight(0x333333);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(5, 3, 5);
+            scene.add(directionalLight);
+            
+            // 添加点光源让星球发光
+            const pointLight = new THREE.PointLight(0xffff00, 2, 3000);
+            scene.add(pointLight);
+            
+            // 获取初始天体数据
+            fetch('/api/bodies')
+                .then(response => response.json())
+                .then(data => {
+                    bodies = data;
+                    createBodies();
+                    animate();
+                });
+            
+            // 窗口大小调整
+            window.addEventListener('resize', onWindowResize, false);
+            
+            // 添加恢复初始视角按钮事件
+            document.getElementById('reset-view').addEventListener('click', resetView);
+            // 添加恢复初始位置按钮事件
+            document.getElementById('reset-position').addEventListener('click', resetPosition);
+        }
+        
+        // 恢复初始视角
+        function resetView() {
+            camera.position.set(0, 0, 3000);
+            camera.lookAt(0, 0, 0);
+            controls.reset();
+        }
+        
+        // 恢复初始位置
+        function resetPosition() {
+            // 获取初始天体数据
+            fetch('/api/bodies')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    bodies = data;
+                    updateBodies();
+                    
+                    // 清空尾迹
+                    bodyTrails.forEach(trail => {
+                        trail.positions = [];
+                        trail.mesh.geometry.setAttribute(
+                            'position',
+                            new THREE.Float32BufferAttribute([], 3)
+                        );
+                        trail.mesh.geometry.attributes.position.needsUpdate = true;
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching bodies data in resetPosition:', error);
+                    // 可以在这里添加用户友好的错误提示
+                });
+        }
+        
+        // 创建天体
+        function createBodies() {
+            bodies.forEach(body => {
+                // 创建几何体
+                const geometry = new THREE.SphereGeometry(body.size_scale, 64, 64);
+                
+                // 根据天体名称设置颜色
+                let color = 0xffff00; // 默认黄色
+                let emissive = 0xffff00; // 默认黄色
+                if (body.name === '地球') {
+                    color = 0x0000ff; // 蓝色
+                    emissive = 0x0000ff; // 蓝色
+                }
+                
+                // 创建材质，将颜色改为黄色并让它们发光
+                const material = new THREE.MeshPhongMaterial({ 
+                    color: color,
+                    emissive: emissive,
+                    emissiveIntensity: 0.5,
+                    shininess: 100 
+                });
+                
+                // 创建网格
+                const mesh = new THREE.Mesh(geometry, material);
+                
+                // 设置位置
+                mesh.position.set(body.position[0]/1e6, body.position[1]/1e6, body.position[2]/1e6);
+                
+                // 添加到场景
+                scene.add(mesh);
+                
+                // 保存引用
+                bodyMeshes.push(mesh);
+                
+                // 创建尾迹
+                const trailGeometry = new THREE.BufferGeometry();
+                const trailMaterial = new THREE.LineBasicMaterial({ color: color });
+                const trail = new THREE.Line(trailGeometry, trailMaterial);
+                scene.add(trail);
+                bodyTrails.push({
+                    positions: [],
+                    mesh: trail
+                });
+            });
+        }
+        
+        // 更新尾迹
+        function updateTrails() {
+            bodies.forEach((body, index) => {
+                const trail = bodyTrails[index];
+                if (trail) {
+                    // 添加当前位置到尾迹
+                    const position = new THREE.Vector3(
+                        body.position[0]/1e6,
+                        body.position[1]/1e6,
+                        body.position[2]/1e6
+                    );
+                    trail.positions.push(position);
+                    
+                    // 限制尾迹长度
+                    if (trail.positions.length > 100) {
+                        trail.positions.shift();
+                    }
+                    
+                    // 更新尾迹几何体
+                    const positions = [];
+                    trail.positions.forEach(pos => {
+                        positions.push(pos.x, pos.y, pos.z);
+                    });
+                    
+                    trail.mesh.geometry.setAttribute(
+                        'position',
+                        new THREE.Float32BufferAttribute(positions, 3)
+                    );
+                    trail.mesh.geometry.attributes.position.needsUpdate = true;
+                }
+            });
+        }
+        
+        // 窗口大小调整
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        // 动画循环
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // 更新控制器
+            controls.update();
+            
+            // 渲染场景
+            renderer.render(scene, camera);
+        }
+        
+        // 定时更新天体位置
+        setInterval(() => {
+            // 演化系统
+            fetch('/api/evolve?dt=86400')  // 每次演化一天
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    bodies = data;
+                    updateBodies();
+                    updateTrails();
+                })
+                .catch(error => {
+                    console.error('Error fetching evolve data:', error);
+                    // 可以在这里添加用户友好的错误提示
+                });
+        }, 200);  // 每200毫秒更新一次，降低频率减少资源消耗
+        
+        // 更新天体位置
+        function updateBodies() {
+            bodies.forEach((body, index) => {
+                const mesh = bodyMeshes[index];
+                if (mesh) {
+                    mesh.position.set(body.position[0]/1e6, body.position[1]/1e6, body.position[2]/1e6);
+                }
+            });
+        }
+        
+        // 初始化应用
+        init();
+    </script>
+</body>
+</html>
